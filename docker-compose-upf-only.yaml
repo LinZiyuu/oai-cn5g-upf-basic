@@ -1,0 +1,54 @@
+services:
+    oai-smf:
+        container_name: "oai-smf"
+        image: oaisoftwarealliance/oai-smf:develop
+        expose:
+            - 80/tcp
+            - 8080/tcp
+            - 8805/udp
+        volumes:
+            - ./conf/config-upf-only.yaml:/openair-smf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        networks:
+            public_net:
+                ipv4_address: 192.168.70.133
+    oai-upf:
+        container_name: "oai-upf"
+        image: oaisoftwarealliance/oai-upf:develop
+        expose:
+            - 2152/udp
+            - 8805/udp
+        volumes:
+            - ./conf/config-upf-only.yaml:/openair-upf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        depends_on:
+            - oai-smf
+        cap_add:
+            - NET_ADMIN
+            - SYS_ADMIN
+        cap_drop:
+            - ALL
+        privileged: true
+        # 在容器启动时创建eth1 dummy接口并配置IP，用于N6接口，避免XDP程序冲突
+        entrypoint:
+            - sh
+            - -c
+            - >
+              ip link add name eth1 type dummy 2>/dev/null || true;
+              ip addr replace 192.168.70.240/26 dev eth1 2>/dev/null || true;
+              ip link set dev eth1 up 2>/dev/null || true;
+              exec /openair-upf/bin/entrypoint.sh /openair-upf/bin/oai_upf -c /openair-upf/etc/config.yaml -o
+        networks:
+            public_net:
+                ipv4_address: 192.168.70.134
+networks:
+    public_net:
+        driver: bridge
+        name: oai-cn5g-public-net
+        ipam:
+            config:
+                - subnet: 192.168.70.128/26
+        driver_opts:
+            com.docker.network.bridge.name: "oai-cn5g"
